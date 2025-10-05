@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Dict, Iterable, List, Tuple
 
 from ..models import UserClean
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_user(user: Dict, collected_at: datetime) -> Tuple[Dict, Dict]:
@@ -31,10 +34,25 @@ def prepare_records(
     """Run ``normalizer`` over ``items`` returning (raw, clean) lists."""
     raw_records: List[Dict] = []
     clean_records: List[Dict] = []
+    skipped = 0
 
     for item in items:
-        raw_record, clean_record = normalizer(item, collected_at=collected_at)
+        try:
+            raw_record, clean_record = normalizer(item, collected_at=collected_at)
+        except ValueError as exc:
+            logger.warning(
+                "Skipping malformed user %s (%s): %s",
+                item.get("id"),
+                item.get("username") or "<blank>",
+                exc,
+            )
+            skipped += 1
+            continue
+
         raw_records.append(raw_record)
         clean_records.append(clean_record)
+
+    if skipped:
+        logger.info("Skipped %s malformed users in this batch", skipped)
 
     return raw_records, clean_records
