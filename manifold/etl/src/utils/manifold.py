@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, Mapping, MutableMapping, Optional
+from typing import Any, Mapping, Optional
 
 import requests
 
@@ -29,14 +29,14 @@ class ManifoldClient:
         timeout: int = 30,
     ) -> None:
         self.base_url = base_url.rstrip("/")
-        self.session = requests.Session()
         self.timeout = timeout
         self._rate_limiter = rate_limiter or RateLimiter()
         self._max_retries = max_retries
         self._backoff_factor = backoff_factor
+        self._headers: dict[str, str] = {}
 
         if api_key:
-            self.session.headers.update({"Authorization": f"Key {api_key}"})
+            self._headers["Authorization"] = f"Key {api_key}"
 
     def _request(self, method: str, path: str, *, params: Optional[Mapping[str, Any]] = None) -> requests.Response:
         url = f"{self.base_url}/{path.lstrip('/')}"
@@ -45,7 +45,13 @@ class ManifoldClient:
         for attempt in range(1, self._max_retries + 1):
             self._rate_limiter.wait()
             try:
-                response = self.session.request(method, url, params=params, timeout=self.timeout)
+                response = requests.request(
+                    method,
+                    url,
+                    params=params,
+                    headers=self._headers,
+                    timeout=self.timeout,
+                )
             except requests.RequestException as exc:
                 logger.warning("Request exception on %s %s: %s", method, url, exc)
                 if attempt == self._max_retries:
@@ -70,7 +76,6 @@ class ManifoldClient:
 
             return response
 
-        # Last attempt either returned due to success or we raise.
         raise RuntimeError("Exceeded maximum retries for request")
 
     def get_json(self, path: str, *, params: Optional[Mapping[str, Any]] = None) -> Any:
@@ -78,8 +83,8 @@ class ManifoldClient:
         response.raise_for_status()
         return response.json()
 
-    def close(self) -> None:
-        self.session.close()
+    def close(self) -> None:  # pragma: no cover - nothing to close when using requests.request
+        return
 
     def __enter__(self) -> "ManifoldClient":
         return self

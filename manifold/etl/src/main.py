@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
         "--chunk-size",
         type=int,
         default=DEFAULT_CHUNK_SIZE,
-        help="Number of records to accumulate before writing to the database",
+        help="Number of list results to accumulate before writing to the database",
     )
     return parser.parse_args()
 

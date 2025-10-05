@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 from ..utils.manifold import ManifoldClient
 
@@ -35,19 +35,3 @@ def stream_users(
             break
         if max_pages is not None and page >= max_pages:
             break
-
-
-def fetch_users(
-    client: ManifoldClient,
-    *,
-    limit: Optional[int] = None,
-    page_size: int = 500,
-    before: Optional[str] = None,
-) -> List[Dict]:
-    """Return a list of users up to ``limit`` records."""
-    results: List[Dict] = []
-    for user in stream_users(client, page_size=page_size, before=before):
-        results.append(user)
-        if limit is not None and len(results) >= limit:
-            break
-    return results
