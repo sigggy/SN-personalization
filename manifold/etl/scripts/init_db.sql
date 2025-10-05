@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users_clean (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL,
     name TEXT NOT NULL,
-    avatar_url TEXT NOT NULL,
+    avatar_url TEXT,
     bio TEXT,
     website TEXT,
     banner_url TEXT,

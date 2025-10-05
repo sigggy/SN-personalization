@@ -12,7 +12,7 @@ class UserClean(BaseModel):
     id: str
     username: str
     name: str
-    avatar_url: str = Field(alias="avatarUrl")
+    avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
     created_time: datetime = Field(alias="createdTime")
     balance: float
     total_deposits: float = Field(alias="totalDeposits")
@@ -69,7 +69,7 @@ class UserClean(BaseModel):
             "id": _require_string(user.get("id"), "id"),
             "username": _require_string(user.get("username"), "username"),
             "name": _require_string(user.get("name") or user.get("displayName"), "name"),
-            "avatarUrl": _require_string(user.get("avatarUrl"), "avatarUrl"),
+            "avatarUrl": _normalize_string(user.get("avatarUrl")),
             "createdTime": _require_datetime(user.get("createdTime"), "createdTime"),
             "balance": float(_require_number(user.get("balance"), "balance")),
             "totalDeposits": float(_require_number(user.get("totalDeposits"), "totalDeposits")),

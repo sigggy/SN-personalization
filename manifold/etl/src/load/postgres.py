@@ -41,7 +41,7 @@ users_clean = Table(
     Column("id", String, primary_key=True),
     Column("username", String, nullable=False),
     Column("name", String, nullable=False),
-    Column("avatar_url", Text, nullable=False),
+    Column("avatar_url", Text),
     Column("bio", Text),
     Column("website", Text),
     Column("banner_url", Text),
