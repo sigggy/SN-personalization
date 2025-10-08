@@ -42,7 +42,6 @@ class UserClean(BaseModel):
     sweepstakes_verified: Optional[bool] = Field(default=None, alias="sweepstakesVerified")
     kyc_status: Optional[str] = Field(default=None, alias="kycDocumentStatus")
     referred_by_user_id: Optional[str] = Field(default=None, alias="referredByUserId")
-    total_bets: Optional[int] = Field(default=None, alias="totalBets")
     total_profit: Optional[float] = Field(default=None, alias="profit_allTime")
     total_volume: Optional[float] = Field(default=None, alias="profit_sinceCreation")
     current_betting_streak: Optional[int] = Field(default=None, alias="currentBettingStreak")
@@ -94,7 +93,6 @@ class UserClean(BaseModel):
             "sweepstakesVerified": _normalize_bool(user.get("sweepstakesVerified")),
             "kycDocumentStatus": _normalize_string(user.get("kycDocumentStatus")),
             "referredByUserId": _normalize_string(user.get("referredByUserId")),
-            "totalBets": user.get("totalBets") or user.get("numBets"),
             "profit_allTime": profit_cached.get("allTime"),
             "profit_sinceCreation": profit_cached.get("sinceCreation"),
             "currentBettingStreak": user.get("currentBettingStreak"),
@@ -129,8 +127,10 @@ def _require_number(value, field: str) -> float:
 
 
 def _require_dict(value, field: str) -> dict:
-    if not isinstance(value, dict) or not value:
+    if value is None:
         raise ValueError(f"Missing required dict field '{field}'")
+    if not isinstance(value, dict):
+        raise ValueError(f"Field '{field}' must be a dict")
     return value
 
 

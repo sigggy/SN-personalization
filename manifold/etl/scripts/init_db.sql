@@ -3,12 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TABLE IF NOT EXISTS users_raw (
-    id TEXT PRIMARY KEY,
-    json_data JSONB NOT NULL,
-    collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
+-- Cleaned user table
 CREATE TABLE IF NOT EXISTS users_clean (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL,
@@ -35,7 +30,6 @@ CREATE TABLE IF NOT EXISTS users_clean (
     sweepstakes_verified BOOLEAN,
     kyc_status TEXT,
     referred_by_user_id TEXT,
-    total_bets INTEGER,
     total_profit NUMERIC,
     total_volume NUMERIC,
     current_betting_streak INTEGER,
@@ -49,10 +43,43 @@ CREATE TABLE IF NOT EXISTS users_clean (
     total_deposits NUMERIC NOT NULL,
     total_cash_deposits NUMERIC,
     url TEXT,
-    collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    collected_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_clean_username ON users_clean (username);
 CREATE INDEX IF NOT EXISTS idx_users_clean_referred_by ON users_clean (referred_by_user_id);
+
+-- Cleaned bet table
+CREATE TABLE IF NOT EXISTS bets_clean (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    contract_id TEXT NOT NULL,
+    answer_id TEXT,
+    created_time TIMESTAMPTZ NOT NULL,
+    updated_time TIMESTAMPTZ,
+    amount NUMERIC NOT NULL,
+    loan_amount NUMERIC,
+    outcome TEXT NOT NULL,
+    shares NUMERIC NOT NULL,
+    prob_before NUMERIC NOT NULL,
+    prob_after NUMERIC NOT NULL,
+    liquidity_fee NUMERIC,
+    creator_fee NUMERIC,
+    platform_fee NUMERIC,
+    is_api BOOLEAN,
+    is_redemption BOOLEAN NOT NULL,
+    challenge_slug TEXT,
+    reply_to_comment_id TEXT,
+    bet_group_id TEXT,
+    limit_prob NUMERIC,
+    is_cancelled BOOLEAN,
+    order_amount NUMERIC,
+    is_filled BOOLEAN,
+    expires_at TIMESTAMPTZ,
+    collected_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bets_clean_user ON bets_clean (user_id);
+CREATE INDEX IF NOT EXISTS idx_bets_clean_contract ON bets_clean (contract_id);
 
 COMMIT;

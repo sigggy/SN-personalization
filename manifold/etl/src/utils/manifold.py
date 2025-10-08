@@ -8,42 +8,33 @@ from typing import Any, Mapping, Optional
 
 import requests
 
-from .rate_limit import RateLimiter
-
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://manifold.markets/api/v0"
 
 
 class ManifoldClient:
-    """Thin wrapper around :mod:`requests` with rate limiting and retries."""
+    """Thin wrapper around :mod:`requests` with retries and exponential backoff."""
 
     def __init__(
         self,
-        api_key: str | None = None,
         *,
         base_url: str = BASE_URL,
-        rate_limiter: RateLimiter | None = None,
         max_retries: int = 5,
         backoff_factor: float = 1.5,
         timeout: int = 30,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._rate_limiter = rate_limiter or RateLimiter()
         self._max_retries = max_retries
         self._backoff_factor = backoff_factor
         self._headers: dict[str, str] = {}
-
-        if api_key:
-            self._headers["Authorization"] = f"Key {api_key}"
 
     def _request(self, method: str, path: str, *, params: Optional[Mapping[str, Any]] = None) -> requests.Response:
         url = f"{self.base_url}/{path.lstrip('/')}"
         params = dict(params or {})
 
         for attempt in range(1, self._max_retries + 1):
-            self._rate_limiter.wait()
             try:
                 response = requests.request(
                     method,

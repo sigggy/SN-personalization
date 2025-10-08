@@ -1,16 +1,16 @@
 # Manifold Decision Data ETL
 
-This project defines a reproducible, modular ETL pipeline for collecting, transforming, and storing Manifold Markets user data in PostgreSQL. The current milestone paginates the `/v0/users` endpoint—which returns the full `FullUser` payload—and persists both the raw JSON snapshots and a cleaned, query-friendly representation.
+This project defines a reproducible, modular ETL pipeline for collecting, transforming, and storing Manifold Markets user and bet data in PostgreSQL. The current milestone paginates the `/v0/users` endpoint—which returns the full `FullUser` payload—and produces a cleaned, query-friendly representation ready for analytics.
 
 ## Architecture Overview
 
 | Stage | Description |
 | ----- | ----------- |
-| Extract | Page through `/v0/users` with a shared rate limiter; each page already contains the complete user profile. |
-| Transform | Normalize payloads via Pydantic models, add ingestion timestamps, enforce required fields, and retain the raw JSON blob for audits. |
-| Load | Upsert into staging (`users_raw`) and cleaned (`users_clean`) tables in PostgreSQL hosted on GCP. |
+| Extract | Page through `/v0/users`; requests use automatic retries with exponential backoff to respect API throttling. |
+| Transform | Normalize payloads via Pydantic models, add ingestion timestamps, and enforce required fields. |
+| Load | Upsert into cleaned tables (`users_clean`, `bets_clean`) in PostgreSQL hosted on GCP. |
 
-Future milestones can extend the same patterns to bets and markets once the user ingestion pipeline is battle-tested.
+Future milestones can extend the same patterns to additional endpoints once the core ingestion pipeline is battle-tested.
 
 ## Repository Layout
 
@@ -19,22 +19,27 @@ etl/
 ├── README.md
 ├── requirements.txt
 ├── .env.example
+├── config.py
 ├── src/
 │   ├── __init__.py
 │   ├── main.py
 │   ├── extract/
+│   │   ├── bets.py
 │   │   ├── __init__.py
 │   │   └── users.py
-│   ├── transform/
-│   │   ├── __init__.py
-│   │   └── normalize.py
 │   ├── load/
 │   │   ├── __init__.py
 │   │   └── postgres.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── bet.py
+│   │   └── user.py
+│   ├── transform/
+│   │   ├── __init__.py
+│   │   └── normalize.py
 │   └── utils/
 │       ├── __init__.py
-│       ├── manifold.py
-│       └── rate_limit.py
+│       └── manifold.py
 └── scripts/
     └── init_db.sql
 ```
@@ -53,12 +58,7 @@ etl/
    ```
 
 3. **Configure environment variables**
-   - Copy `.env.example` to `.env` and update values:
-     ```ini
-     MANIFOLD_API_KEY=your_api_key_or_leave_blank
-     POSTGRES_URI=postgresql://user:password@host:5432/manifolddb
-     LOG_DIR=logs
-     ```
+   - Copy `.env.example` to `.env` and update `POSTGRES_URI`.
 
 4. **Initialize the database schema**
    ```bash
@@ -68,10 +68,19 @@ etl/
 5. **Run the pipeline**
    ```bash
    # From the etl/ directory
-   python -m src.main --user-limit 1000
+   python -m src.main
    ```
 
-   Useful flags include `--user-limit` to cap the run size and `--chunk-size` to control UPSERT batch sizes.
+   Both user and bet stages run by default. Use `--users-only` or `--bets-only` to run a single stage.
+
+### Runtime configuration
+
+Tune collection limits and chunk sizes via `config.py`. Key settings include:
+
+- `USER_LIMIT` – cap the number of users ingested (set to `None` for no limit).
+- `USER_PAGE_SIZE` and `CHUNK_SIZE` – control API pagination and upsert batch sizes for users.
+- `BET_USER_CHUNK_SIZE`, `BET_WORKER_COUNT`, `THRESHOLD`, and `LIMIT` – manage bet ingestion workload, concurrency, and API paging.
+- `LOG_DIR` – directory where ETL log files are written.
 
 ## Logging
 
@@ -80,7 +89,7 @@ Each ETL invocation writes to `logs/etl_YYYYMMDD.log`. Logs include request coun
 ## Development Guidelines
 
 - Keep ingestions idempotent; UPSERTs keyed on the source `id` avoid duplicates.
-- Respect API limits; the shared rate limiter throttles calls across the pipeline.
+- Respect API limits; the client already backs off on 429s and transient failures.
 - All timestamps are recorded in UTC.
 - Add unit tests for extraction and transformation logic to ensure regressions are caught.
 - Use the Pydantic models in `etl/src/models` when you introduce new cleaned tables so transformation stays consistent.

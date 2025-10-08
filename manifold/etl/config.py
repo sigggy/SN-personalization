@@ -1,0 +1,17 @@
+"""Runtime configuration for the Manifold ETL pipeline."""
+
+# Logging
+LOG_DIR = "logs"
+
+# User ingestion
+USER_LIMIT = None  # Set to an int to cap ingested users
+USER_PAGE_SIZE = 500
+CHUNK_SIZE = 200
+
+# Bets ingestion
+BET_USER_CHUNK_SIZE = 500
+BET_WORKER_COUNT = 1
+
+API_URL = "https://api.manifold.markets/v0/bets"
+THRESHOLD = 50
+LIMIT = 1000

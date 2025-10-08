@@ -1,4 +1,4 @@
-"""ETL orchestrator for Manifold Markets user data."""
+"""ETL orchestrator for Manifold Markets data."""
 
 from __future__ import annotations
 
@@ -11,30 +11,32 @@ from typing import Iterable, List
 
 from dotenv import load_dotenv
 
+import config
+
+from .extract import bets as bets_extract
 from .extract import users as users_extract
 from .load.postgres import PostgresLoader
-from .transform.normalize import normalize_user, prepare_records
+from .transform.normalize import normalize_bet, normalize_user, prepare_records
 from .utils.manifold import ManifoldClient
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CHUNK_SIZE = 200
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Manifold user ETL pipeline")
-    parser.add_argument("--user-limit", type=int, help="Max number of users to ingest")
+    parser = argparse.ArgumentParser(description="Manifold ETL pipeline")
     parser.add_argument(
-        "--user-page-size", type=int, default=500, help="Page size when fetching users"
+        "--users-only",
+        action="store_true",
+        help="Run only the user ingestion stage",
+    )
+    parser.add_argument(
+        "--bets-only",
+        action="store_true",
+        help="Run only the bet ingestion stage",
     )
     parser.add_argument(
         "--log-level", default="INFO", help="Logging level (DEBUG, INFO, WARNING, ...)"
-    )
-    parser.add_argument(
-        "--chunk-size",
-        type=int,
-        default=DEFAULT_CHUNK_SIZE,
-        help="Number of list results to accumulate before writing to the database",
     )
     return parser.parse_args()
 
@@ -66,15 +68,12 @@ def _chunked(iterable: Iterable, size: int) -> Iterable[List]:
         yield chunk
 
 
-def run_users_stage(
-    client: ManifoldClient,
-    loader: PostgresLoader,
-    *,
-    limit: int | None,
-    page_size: int,
-    chunk_size: int,
-) -> None:
+def run_users_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
     logger.info("Starting user ingestion")
+    limit = config.USER_LIMIT
+    page_size = config.USER_PAGE_SIZE
+    chunk_size = config.CHUNK_SIZE
+
     total = 0
     for batch in _chunked(users_extract.stream_users(client, page_size=page_size), chunk_size):
         if limit is not None and total >= limit:
@@ -84,10 +83,9 @@ def run_users_stage(
             batch = batch[: limit - total]
 
         collected_at = datetime.now(timezone.utc)
-        raw_records, clean_records = prepare_records(
+        clean_records = prepare_records(
             batch, normalize_user, collected_at=collected_at
         )
-        loader.upsert_raw("users_raw", raw_records)
         loader.upsert_clean("users_clean", clean_records)
 
         total += len(batch)
@@ -96,14 +94,65 @@ def run_users_stage(
     logger.info("User ingestion completed (%s records)", total)
 
 
+def run_bets_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
+    logger.info("Starting bet ingestion")
+    chunk_size = config.BET_USER_CHUNK_SIZE
+    total_bets = 0
+
+    for user_chunk in loader.stream_user_chunks(chunk_size):
+        bet_payloads, processed_users = bets_extract.process_bet_chunk(
+            client,
+            user_chunk,
+            worker_count=config.BET_WORKER_COUNT,
+        )
+        if not bet_payloads:
+            continue
+
+        collected_at = datetime.now(timezone.utc)
+        clean_records = [
+            normalize_bet(payload, collected_at) for payload in bet_payloads
+        ]
+        loader.upsert_clean("bets_clean", clean_records)
+
+        total_bets += len(clean_records)
+        logger.info(
+            "Processed %s qualifying users; upserted %s bets this batch (cumulative bets: %s)",
+            processed_users,
+            len(clean_records),
+            total_bets,
+        )
+
+    logger.info("Bet ingestion completed (%s total bets)", total_bets)
+
+
+
+
+def run_stages(args: argparse.Namespace, loader: PostgresLoader) -> None:
+    if args.users_only and args.bets_only:
+        raise SystemExit("Use either --users-only or --bets-only, not both.")
+
+    run_users = not args.bets_only
+    run_bets = not args.users_only
+
+    if run_users:
+        with ManifoldClient() as client:
+            run_users_stage(
+                client,
+                loader,
+            )
+
+    if run_bets:
+        with ManifoldClient() as client:
+            run_bets_stage(client, loader)
+
+
 def main() -> None:
     load_dotenv()
 
     args = parse_args()
 
-    api_key = os.getenv("MANIFOLD_API_KEY")
     postgres_uri = os.getenv("POSTGRES_URI")
-    log_dir = Path(os.getenv("LOG_DIR", "logs"))
+    log_dir = Path(config.LOG_DIR)
 
     if not postgres_uri:
         raise SystemExit("POSTGRES_URI must be configured (see .env)")
@@ -113,14 +162,7 @@ def main() -> None:
     loader = PostgresLoader(postgres_uri)
     loader.ensure_schema()
 
-    with ManifoldClient(api_key=api_key) as client:
-        run_users_stage(
-            client,
-            loader,
-            limit=args.user_limit,
-            page_size=args.user_page_size,
-            chunk_size=args.chunk_size,
-        )
+    run_stages(args, loader)
 
 
 if __name__ == "__main__":
