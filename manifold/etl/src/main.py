@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
 
 def configure_logging(log_dir: Path, level: str) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"etl_{datetime.now(timezone.utc):%Y%m%d}.log"
+    log_path = log_dir / f"etl_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.log"
 
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
