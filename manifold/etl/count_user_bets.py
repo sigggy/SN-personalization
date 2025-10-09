@@ -103,7 +103,7 @@ def fetch_all_bets(user_id: str) -> List[Bet]:
         all_bets.extend(Bet.from_payload(b) for b in data)
         if len(data) < LIMIT:
             break
-        before = data[-1]["createdTime"]
+        before = data[-1]["id"]
         time.sleep(DELAY)
     return all_bets
 
