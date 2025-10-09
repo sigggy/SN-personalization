@@ -1,0 +1,14 @@
+2025-10-09 14:41:23,987 INFO [__main__] Logging to logs/etl_20251009_144123.log
+2025-10-09 14:41:24,017 INFO [__main__] Starting bet ingestion
+2025-10-09 14:41:24,017 INFO [__main__] Resuming bet ingestion at or after username 'DanOlson7q5m'
+2025-10-09 14:41:24,019 INFO [src.load.postgres] Resuming bet ingestion from user_id 5QFXG1aBvMYoG2wDMrxAiF19Z003 (username DanOlson7q5m)
+2025-10-09 14:42:12,397 WARNING [src.utils.manifold] Request exception on GET https://manifold.markets/api/v0/bets: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2025-10-09 14:42:12,397 INFO [src.utils.manifold] Sleeping 1.00s before retry
+2025-10-09 14:42:12,977 WARNING [src.utils.manifold] Request exception on GET https://manifold.markets/api/v0/bets: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2025-10-09 14:42:12,977 INFO [src.utils.manifold] Sleeping 1.00s before retry
+2025-10-09 14:42:13,002 WARNING [src.utils.manifold] Request exception on GET https://manifold.markets/api/v0/bets: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2025-10-09 14:42:13,002 INFO [src.utils.manifold] Sleeping 1.00s before retry
+2025-10-09 14:42:13,129 WARNING [src.utils.manifold] Request exception on GET https://manifold.markets/api/v0/bets: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2025-10-09 14:42:13,129 INFO [src.utils.manifold] Sleeping 1.00s before retry
+2025-10-09 14:44:31,513 INFO [src.load.postgres] Upserted 111765 rows into bets_clean
+2025-10-09 14:44:32,017 INFO [__main__] Processed 42 qualifying users (DanOlson7q5m, louis, Genester, Nick5bab, GarryRed, deletedacount123456, EiverynSwiftTongue, PV_bot, CynthiaSuzanne, 2609, ElijahBodden, m12345678, reifiedbeans, skittles1412, frosk, jks, Aurora_Glow, RiverBellamy, MatthewGrayc2b2, BridgetLoughhead, RuthGraceWong, AustinThomas, COIN, WilliamK, RyanSinger, Jen6382, ZhaoNan, uhbif19, dreev, EmmettShear, SayLaur, AlfridaBanks, IshaPerson, BrendanMooney, ZachSK, travis, RafaelCosman, KevinNguyen72f8, MLDoyle, RlSynced, CapitalHousecat, MagicBean); upserted 111765 bets this batch (cumulative bets: 111765)

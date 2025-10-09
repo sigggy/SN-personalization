@@ -1,0 +1,24 @@
+2025-10-09 01:48:40,057 INFO [__main__] Logging to logs/etl_20251009_014840.log
+2025-10-09 01:48:40,134 INFO [__main__] Starting user ingestion
+2025-10-09 01:48:40,819 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:40,820 INFO [__main__] Ingested 200 users (cumulative)
+2025-10-09 01:48:41,021 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:41,022 INFO [__main__] Ingested 400 users (cumulative)
+2025-10-09 01:48:41,633 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:41,634 INFO [__main__] Ingested 600 users (cumulative)
+2025-10-09 01:48:41,807 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:41,808 INFO [__main__] Ingested 800 users (cumulative)
+2025-10-09 01:48:41,999 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:42,000 INFO [__main__] Ingested 1000 users (cumulative)
+2025-10-09 01:48:42,536 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:42,538 INFO [__main__] Ingested 1200 users (cumulative)
+2025-10-09 01:48:42,686 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:42,687 INFO [__main__] Ingested 1400 users (cumulative)
+2025-10-09 01:48:43,165 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:43,166 INFO [__main__] Ingested 1600 users (cumulative)
+2025-10-09 01:48:43,295 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:43,296 INFO [__main__] Ingested 1800 users (cumulative)
+2025-10-09 01:48:43,428 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:43,429 INFO [__main__] Ingested 2000 users (cumulative)
+2025-10-09 01:48:43,859 INFO [src.load.postgres] Upserted 200 rows into users_clean
+2025-10-09 01:48:43,860 INFO [__main__] Ingested 2200 users (cumulative)
