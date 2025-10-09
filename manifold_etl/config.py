@@ -10,7 +10,7 @@ CHUNK_SIZE = 200
 
 # Bets ingestion
 BET_USER_CHUNK_SIZE = 500
-BET_WORKER_COUNT = 1
+BET_WORKER_COUNT = 4
 BET_UPSERT_BATCH_SIZE = 1000
 
 API_URL = "https://api.manifold.markets/v0/bets"
