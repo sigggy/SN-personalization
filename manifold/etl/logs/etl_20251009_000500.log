@@ -1,0 +1,6 @@
+2025-10-09 00:05:00,603 INFO [__main__] Logging to logs/etl_20251009_000500.log
+2025-10-09 00:05:00,667 INFO [__main__] Starting bet ingestion
+2025-10-09 00:06:32,963 WARNING [src.utils.manifold] Request exception on GET https://manifold.markets/api/v0/bets: HTTPSConnectionPool(host='api.manifold.markets', port=443): Read timed out. (read timeout=30)
+2025-10-09 00:06:32,964 INFO [src.utils.manifold] Sleeping 1.00s before retry
+2025-10-09 00:07:06,695 WARNING [src.utils.manifold] Request exception on GET https://manifold.markets/api/v0/bets: HTTPSConnectionPool(host='api.manifold.markets', port=443): Max retries exceeded with url: /v0/bets?userId=0C1XaYIAPFhLctwzB1vFPoIITwh1&limit=51 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f1386cb76d0>, 'Connection to api.manifold.markets timed out. (connect timeout=30)'))
+2025-10-09 00:07:06,695 INFO [src.utils.manifold] Sleeping 1.00s before retry
