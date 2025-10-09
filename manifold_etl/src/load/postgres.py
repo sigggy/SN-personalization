@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Iterator, List, Mapping, Sequence, Tuple, Type
+from typing import Dict, Iterator, List, Mapping, Optional, Sequence, Tuple, Type
 
 from sqlalchemy import (
     Boolean,
@@ -155,8 +155,13 @@ class PostgresLoader:
             rows = conn.execute(stmt).scalars().all()
         return list(rows)
 
-    def stream_user_chunks(self, chunk_size: int) -> Iterator[List[Tuple[str, str]]]:
-        """Yield chunks of (user_id, username) tuples from the users table."""
+    def stream_user_chunks(
+        self,
+        chunk_size: int,
+        *,
+        start_username: Optional[str] = None,
+    ) -> Iterator[List[Tuple[str, str]]]:
+        """Yield chunks of (user_id, username) tuples, optionally resuming by username."""
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
 
@@ -164,7 +169,32 @@ class PostgresLoader:
         stmt = select(table.c.id, table.c.username).order_by(table.c.id)
 
         with self.engine.connect() as conn:
-            result = conn.execution_options(stream_results=True).execute(stmt)
+            effective_stmt = stmt
+            if start_username:
+                start_id_stmt = (
+                    select(table.c.id)
+                    .where(table.c.username == start_username)
+                    .order_by(table.c.id)
+                    .limit(1)
+                )
+                start_id = conn.execute(start_id_stmt).scalar_one_or_none()
+                if start_id is not None:
+                    logger.info(
+                        "Resuming bet ingestion from user_id %s (username %s)",
+                        start_id,
+                        start_username,
+                    )
+                    effective_stmt = effective_stmt.where(table.c.id >= start_id)
+                else:
+                    logger.warning(
+                        "Start username %s not found; resuming from next username alphabetically",
+                        start_username,
+                    )
+                    effective_stmt = effective_stmt.where(
+                        table.c.username > start_username
+                    )
+
+            result = conn.execution_options(stream_results=True).execute(effective_stmt)
             batch: List[Tuple[str, str]] = []
             for row in result:
                 batch.append((row.id, row.username))

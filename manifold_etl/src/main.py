@@ -7,7 +7,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from dotenv import load_dotenv
 
@@ -37,6 +37,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--log-level", default="INFO", help="Logging level (DEBUG, INFO, WARNING, ...)"
+    )
+    parser.add_argument(
+        "--bet-start-username",
+        help="Resume bet ingestion starting from this username",
     )
     return parser.parse_args()
 
@@ -94,13 +98,22 @@ def run_users_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
     logger.info("User ingestion completed (%s records)", total)
 
 
-def run_bets_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
+def run_bets_stage(
+    client: ManifoldClient,
+    loader: PostgresLoader,
+    *,
+    start_username: Optional[str] = None,
+) -> None:
     logger.info("Starting bet ingestion")
     chunk_size = config.BET_USER_CHUNK_SIZE
     total_bets = 0
+    if start_username:
+        logger.info("Resuming bet ingestion at or after username '%s'", start_username)
 
-    for user_chunk in loader.stream_user_chunks(chunk_size):
-        bet_payloads, processed_users = bets_extract.process_bet_chunk(
+    for user_chunk in loader.stream_user_chunks(
+        chunk_size, start_username=start_username
+    ):
+        bet_payloads, processed_users, processed_usernames = bets_extract.process_bet_chunk(
             client,
             user_chunk,
             worker_count=config.BET_WORKER_COUNT,
@@ -116,8 +129,9 @@ def run_bets_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
 
         total_bets += len(clean_records)
         logger.info(
-            "Processed %s qualifying users; upserted %s bets this batch (cumulative bets: %s)",
+            "Processed %s qualifying users (%s); upserted %s bets this batch (cumulative bets: %s)",
             processed_users,
+            ", ".join(processed_usernames),
             len(clean_records),
             total_bets,
         )
@@ -149,7 +163,11 @@ def run_stages(args: argparse.Namespace, loader: PostgresLoader) -> None:
 
     if run_bets:
         with ManifoldClient(**client_kwargs) as client:
-            run_bets_stage(client, loader)
+            run_bets_stage(
+                client,
+                loader,
+                start_username=args.bet_start_username,
+            )
 
 
 def main() -> None:

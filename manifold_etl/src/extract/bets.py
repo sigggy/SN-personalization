@@ -96,9 +96,10 @@ def fetch_all_bet_payloads(client: ManifoldClient, user_id: str) -> List[dict]:
 def _process_users(
     client: ManifoldClient,
     user_chunk: Sequence[Tuple[str, str]],
-) -> Tuple[List[dict], int]:
+) -> Tuple[List[dict], int, List[str]]:
     payloads: List[dict] = []
     processed_users = 0
+    qualifying_usernames: List[str] = []
 
     for user_id, username in user_chunk:
         try:
@@ -113,10 +114,11 @@ def _process_users(
 
             payloads.extend(bet_payloads)
             processed_users += 1
+            qualifying_usernames.append(username)
         except Exception as exc:  # pragma: no cover - defensive logging
             print(f"ERROR: {exc}")
 
-    return payloads, processed_users
+    return payloads, processed_users, qualifying_usernames
 
 
 def process_bet_chunk(
@@ -124,32 +126,46 @@ def process_bet_chunk(
     user_chunk: Sequence[Tuple[str, str]],
     *,
     worker_count: int = 1,
-) -> Tuple[List[dict], int]:
+) -> Tuple[List[dict], int, List[str]]:
     """Fetch bet payloads for the provided user chunk.
 
-    Returns a tuple of (bet_payloads, qualifying_user_count).
+    Returns (bet_payloads, qualifying_user_count, qualifying_usernames).
     """
     user_list = list(user_chunk)
     worker_count = max(1, worker_count)
 
     if worker_count == 1 or len(user_list) <= 1:
-        payloads, processed_users = _process_users(client, user_list)
+        payloads, processed_users, qualifying_usernames = _process_users(
+            client, user_list
+        )
     else:
         payloads: List[dict] = []
         processed_users = 0
+        qualifying_usernames = []
         sub_chunk_size = max(1, (len(user_list) + worker_count - 1) // worker_count)
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            futures = [
-                executor.submit(_process_users, client, user_list[i : i + sub_chunk_size])
+            futures = {
+                executor.submit(
+                    _process_users, client, user_list[i : i + sub_chunk_size]
+                ): i
                 for i in range(0, len(user_list), sub_chunk_size)
-            ]
+            }
 
+            gathered: List[Tuple[int, List[dict], int, List[str]]] = []
             for future in as_completed(futures):
-                batch_payloads, batch_processed = future.result()
-                if batch_payloads:
-                    payloads.extend(batch_payloads)
-                processed_users += batch_processed
+                index = futures[future]
+                batch_payloads, batch_processed, batch_usernames = future.result()
+                gathered.append((index, batch_payloads, batch_processed, batch_usernames))
+
+        for _, batch_payloads, batch_processed, batch_usernames in sorted(
+            gathered, key=lambda item: item[0]
+        ):
+            if batch_payloads:
+                payloads.extend(batch_payloads)
+            processed_users += batch_processed
+            if batch_usernames:
+                qualifying_usernames.extend(batch_usernames)
 
     if payloads:
         print(f"\nCollected {len(payloads)} bet payloads from active users.")
-    return payloads, processed_users
+    return payloads, processed_users, qualifying_usernames
