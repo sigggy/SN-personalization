@@ -107,32 +107,97 @@ def run_bets_stage(
     logger.info("Starting bet ingestion")
     chunk_size = config.BET_USER_CHUNK_SIZE
     total_bets = 0
+    total_scanned_users = 0
+    total_qualifying_users = 0
     if start_username:
         logger.info("Resuming bet ingestion at or after username '%s'", start_username)
 
     for user_chunk in loader.stream_user_chunks(
         chunk_size, start_username=start_username
     ):
+        total_scanned_users += len(user_chunk)
+        logger.debug(
+            "Fetched user chunk of size %s (user ids: %s)",
+            len(user_chunk),
+            ", ".join(user_id for user_id, _ in user_chunk),
+        )
         bet_payloads, processed_users, processed_usernames = bets_extract.process_bet_chunk(
             client,
             user_chunk,
             worker_count=config.BET_WORKER_COUNT,
         )
+        total_qualifying_users += processed_users
         if not bet_payloads:
+            logger.info(
+                (
+                    "Processed %s qualifying users this batch; "
+                    "cumulative qualifying users: %s; total users scanned: %s; "
+                    "no bets upserted this batch (cumulative bets: %s)"
+                ),
+                processed_users,
+                total_qualifying_users,
+                total_scanned_users,
+                total_bets,
+            )
             continue
 
         collected_at = datetime.now(timezone.utc)
         clean_records = [
             normalize_bet(payload, collected_at) for payload in bet_payloads
         ]
-        loader.upsert_clean("bets_clean", clean_records)
+        bet_upsert_batch_size = getattr(config, "BET_UPSERT_BATCH_SIZE", None)
+        if (
+            bet_upsert_batch_size
+            and bet_upsert_batch_size > 0
+            and len(clean_records) > bet_upsert_batch_size
+        ):
+            record_batches = _chunked(clean_records, bet_upsert_batch_size)
+        else:
+            record_batches = [clean_records]
 
-        total_bets += len(clean_records)
+        bets_upserted_this_batch = 0
         logger.info(
-            "Processed %s qualifying users (%s); upserted %s bets this batch (cumulative bets: %s)",
-            processed_users,
-            ", ".join(processed_usernames),
+            "Preparing to upsert %s bets across %s sub-batches (batch size limit: %s)",
             len(clean_records),
+            len(record_batches),
+            bet_upsert_batch_size if bet_upsert_batch_size else "unbounded",
+        )
+
+        for record_batch in record_batches:
+            first_record = record_batch[0]
+            last_record = record_batch[-1]
+            logger.debug(
+                "Upserting sub-batch of %s bets (first bet id: %s, last bet id: %s)",
+                len(record_batch),
+                first_record["id"],
+                last_record["id"],
+            )
+
+            start_time = datetime.now(timezone.utc)
+            loader.upsert_clean("bets_clean", record_batch)
+            duration = datetime.now(timezone.utc) - start_time
+            logger.debug(
+                "Upserted sub-batch of %s bets in %ss",
+                len(record_batch),
+                duration.total_seconds(),
+            )
+            bets_upserted_this_batch += len(record_batch)
+
+        total_bets += bets_upserted_this_batch
+        processed_usernames_display = (
+            ", ".join(processed_usernames) if processed_usernames else "n/a"
+        )
+        logger.info(
+            (
+                "Processed %s qualifying users this batch (%s); "
+                "cumulative qualifying users: %s; total users scanned: %s; "
+                "upserted %s bets this batch (cumulative bets: %s)"
+            ),
+            processed_users,
+            processed_usernames_display,
+            total_qualifying_users,
+            total_scanned_users,
+            bets_upserted_this_batch,
             total_bets,
         )
 
