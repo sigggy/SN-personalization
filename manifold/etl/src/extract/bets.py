@@ -1,11 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, List, Sequence, Tuple
+from urllib.parse import urlparse
+
+import requests
 
 import config
 from src.models.bet import Bet
 from src.utils.manifold import ManifoldClient
-
-from urllib.parse import urlparse
 
 
 LIMIT = config.LIMIT
@@ -13,6 +14,16 @@ THRESHOLD = config.THRESHOLD
 API_URL = config.API_URL
 
 BET_ENDPOINT = urlparse(API_URL).path.strip("/").split("/")[-1] or "bets"
+
+
+def _response_message(resp: requests.Response) -> str:
+    try:
+        payload = resp.json()
+        if isinstance(payload, dict) and "message" in payload:
+            return str(payload["message"])
+    except ValueError:
+        pass
+    return resp.text
 
 
 def quick_check(
@@ -27,6 +38,14 @@ def quick_check(
             BET_ENDPOINT,
             params={"userId": user_id, "limit": threshold + 1},
         )
+    except requests.HTTPError as exc:
+        resp = exc.response
+        if resp is not None and resp.status_code == 404:
+            print(f"[Username: {username}] user not found ({_response_message(resp)})")
+            return False
+        message = _response_message(resp) if resp is not None else str(exc)
+        print(f"Error fetching bets for {user_id}: {message}")
+        return False
     except Exception as exc:  # pragma: no cover - network failures
         print(f"Error fetching bets for {user_id}: {exc}")
         return False
@@ -45,6 +64,14 @@ def _fetch_bet_pages(client: ManifoldClient, user_id: str) -> Iterable[list]:
             params["before"] = before
         try:
             data = client.get_json(BET_ENDPOINT, params=params)
+        except requests.HTTPError as exc:
+            resp = exc.response
+            if resp is not None and resp.status_code == 404:
+                print(f"User {user_id} not found while fetching bets ({_response_message(resp)})")
+                break
+            message = _response_message(resp) if resp is not None else str(exc)
+            print(f"Error fetching bets for {user_id}: {message}")
+            break
         except Exception as exc:  # pragma: no cover - network failures
             print(f"Error fetching bets for {user_id}: {exc}")
             break
@@ -53,7 +80,9 @@ def _fetch_bet_pages(client: ManifoldClient, user_id: str) -> Iterable[list]:
         yield data
         if len(data) < LIMIT:
             break
-        before = data[-1]["createdTime"]
+        before = data[-1].get("id")
+        if not before:
+            break
 
 
 def fetch_all_bet_payloads(client: ManifoldClient, user_id: str) -> List[dict]:
