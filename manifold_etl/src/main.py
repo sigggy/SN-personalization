@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 from dotenv import load_dotenv
+from sqlalchemy.exc import ProgrammingError
 
 import config
 
@@ -109,6 +110,19 @@ def run_bets_stage(
     total_bets = 0
     total_scanned_users = 0
     total_qualifying_users = 0
+    total_failed_bets = 0
+
+    max_params_per_statement = getattr(config, "BET_MAX_PARAMS_PER_STATEMENT", None)
+    bet_column_count = loader.get_column_count("bets_clean")
+    if (
+        max_params_per_statement is not None
+        and max_params_per_statement > 0
+        and bet_column_count
+    ):
+        max_records_per_upsert = max(1, max_params_per_statement // bet_column_count)
+    else:
+        max_records_per_upsert = None
+
     if start_username:
         logger.info("Resuming bet ingestion at or after username '%s'", start_username)
 
@@ -116,11 +130,6 @@ def run_bets_stage(
         chunk_size, start_username=start_username
     ):
         total_scanned_users += len(user_chunk)
-        logger.debug(
-            "Fetched user chunk of size %s (user ids: %s)",
-            len(user_chunk),
-            ", ".join(user_id for user_id, _ in user_chunk),
-        )
         bet_payloads, processed_users, processed_usernames = bets_extract.process_bet_chunk(
             client,
             user_chunk,
@@ -145,42 +154,50 @@ def run_bets_stage(
         clean_records = [
             normalize_bet(payload, collected_at) for payload in bet_payloads
         ]
-        bet_upsert_batch_size = getattr(config, "BET_UPSERT_BATCH_SIZE", None)
         if (
-            bet_upsert_batch_size
-            and bet_upsert_batch_size > 0
-            and len(clean_records) > bet_upsert_batch_size
+            max_records_per_upsert
+            and len(clean_records) > max_records_per_upsert
         ):
-            record_batches = _chunked(clean_records, bet_upsert_batch_size)
+            pending_batches = list(_chunked(clean_records, max_records_per_upsert))
         else:
-            record_batches = [clean_records]
+            pending_batches = [clean_records]
 
         bets_upserted_this_batch = 0
-        logger.info(
-            "Preparing to upsert %s bets across (batch size limit: %s)",
-            len(clean_records),
-            bet_upsert_batch_size if bet_upsert_batch_size else "unbounded",
-        )
+        failed_bets_this_batch = 0
 
-        for record_batch in record_batches:
-            first_record = record_batch[0]
-            last_record = record_batch[-1]
-            logger.debug(
-                "Upserting sub-batch of %s bets (first bet id: %s, last bet id: %s)",
-                len(record_batch),
-                first_record["id"],
-                last_record["id"],
-            )
+        while pending_batches:
+            record_batch = pending_batches.pop()
+            try:
+                loader.upsert_clean("bets_clean", record_batch)
+            except ProgrammingError as exc:
+                if len(record_batch) == 1:
+                    failed_bet_id = record_batch[0].get("id")
+                    logger.exception(
+                        "Failed to upsert bet %s due to ProgrammingError; skipping.",
+                        failed_bet_id,
+                    )
+                    failed_bets_this_batch += 1
+                    total_failed_bets += 1
+                    continue
 
-            start_time = datetime.now(timezone.utc)
-            loader.upsert_clean("bets_clean", record_batch)
-            duration = datetime.now(timezone.utc) - start_time
-            logger.debug(
-                "Upserted sub-batch of %s bets in %ss",
-                len(record_batch),
-                duration.total_seconds(),
-            )
-            bets_upserted_this_batch += len(record_batch)
+                split_point = max(1, len(record_batch) // 2)
+                first_half = record_batch[:split_point]
+                second_half = record_batch[split_point:]
+
+                logger.warning(
+                    "ProgrammingError for %s bets; retrying as batches of %s and %s. Error: %s",
+                    len(record_batch),
+                    len(first_half),
+                    len(second_half),
+                    exc,
+                )
+
+                if second_half:
+                    pending_batches.append(second_half)
+                if first_half:
+                    pending_batches.append(first_half)
+            else:
+                bets_upserted_this_batch += len(record_batch)
 
         total_bets += bets_upserted_this_batch
         processed_usernames_display = (
@@ -190,7 +207,8 @@ def run_bets_stage(
             (
                 "Processed %s qualifying users this batch (%s); "
                 "cumulative qualifying users: %s; total users scanned: %s; "
-                "upserted %s bets this batch (cumulative bets: %s)"
+                "upserted %s bets this batch (cumulative bets: %s); "
+                "failed bet upserts this batch: %s (cumulative failed: %s)"
             ),
             processed_users,
             processed_usernames_display,
@@ -198,6 +216,8 @@ def run_bets_stage(
             total_scanned_users,
             bets_upserted_this_batch,
             total_bets,
+            failed_bets_this_batch,
+            total_failed_bets,
         )
 
     logger.info("Bet ingestion completed (%s total bets)", total_bets)

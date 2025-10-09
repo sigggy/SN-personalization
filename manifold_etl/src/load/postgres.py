@@ -155,6 +155,11 @@ class PostgresLoader:
             rows = conn.execute(stmt).scalars().all()
         return list(rows)
 
+    def get_column_count(self, table_name: str) -> int:
+        """Return number of columns for the given cleaned table."""
+        table = CLEAN_TABLES[table_name]
+        return len(table.columns)
+
     def stream_user_chunks(
         self,
         chunk_size: int,
