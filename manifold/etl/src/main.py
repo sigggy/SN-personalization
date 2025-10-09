@@ -134,15 +134,21 @@ def run_stages(args: argparse.Namespace, loader: PostgresLoader) -> None:
     run_users = not args.bets_only
     run_bets = not args.users_only
 
+    client_kwargs = {
+        "max_retries": config.API_MAX_RETRIES,
+        "backoff_factor": config.API_BACKOFF_FACTOR,
+        "timeout": config.API_TIMEOUT,
+    }
+
     if run_users:
-        with ManifoldClient() as client:
+        with ManifoldClient(**client_kwargs) as client:
             run_users_stage(
                 client,
                 loader,
             )
 
     if run_bets:
-        with ManifoldClient() as client:
+        with ManifoldClient(**client_kwargs) as client:
             run_bets_stage(client, loader)
 
 

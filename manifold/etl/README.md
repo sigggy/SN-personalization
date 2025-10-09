@@ -80,6 +80,7 @@ Tune collection limits and chunk sizes via `config.py`. Key settings include:
 - `USER_LIMIT` – cap the number of users ingested (set to `None` for no limit).
 - `USER_PAGE_SIZE` and `CHUNK_SIZE` – control API pagination and upsert batch sizes for users.
 - `BET_USER_CHUNK_SIZE`, `BET_WORKER_COUNT`, `THRESHOLD`, and `LIMIT` – manage bet ingestion workload, concurrency, and API paging.
+- `API_MAX_RETRIES`, `API_BACKOFF_FACTOR`, and `API_TIMEOUT` – tune retry behaviour for Manifold API calls.
 - `LOG_DIR` – directory where ETL log files are written.
 
 ## Logging

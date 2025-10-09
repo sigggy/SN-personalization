@@ -15,3 +15,8 @@ BET_WORKER_COUNT = 1
 API_URL = "https://api.manifold.markets/v0/bets"
 THRESHOLD = 50
 LIMIT = 1000
+
+# HTTP client
+API_TIMEOUT = 30  # seconds
+API_MAX_RETRIES = 7
+API_BACKOFF_FACTOR = 1.75
