@@ -157,9 +157,8 @@ def run_bets_stage(
 
         bets_upserted_this_batch = 0
         logger.info(
-            "Preparing to upsert %s bets across %s sub-batches (batch size limit: %s)",
+            "Preparing to upsert %s bets across (batch size limit: %s)",
             len(clean_records),
-            len(record_batches),
             bet_upsert_batch_size if bet_upsert_batch_size else "unbounded",
         )
 
