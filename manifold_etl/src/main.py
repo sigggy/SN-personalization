@@ -7,7 +7,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List, Mapping, Optional
+from typing import Dict, Iterable, List, Mapping, Optional
 
 from dotenv import load_dotenv
 from sqlalchemy.exc import ProgrammingError
@@ -241,6 +241,30 @@ def run_bets_stage(
     logger.info("Bet ingestion completed (%s total bets)", total_bets)
 
 
+def _dedupe_by_id(records: List[Dict]) -> List[Dict]:
+    """Return records with duplicate ``id`` entries removed, preserving order."""
+    deduped: List[Dict] = []
+    seen: set[str] = set()
+
+    for record in records:
+        record_id = record.get("id")
+        if record_id is None:
+            logger.warning("Skipping record without primary key: %s", record)
+            continue
+        if record_id in seen:
+            continue
+        seen.add(record_id)
+        deduped.append(record)
+
+    if len(deduped) != len(records):
+        logger.debug(
+            "Deduplicated records by id (%s duplicates removed)",
+            len(records) - len(deduped),
+        )
+
+    return deduped
+
+
 def _resolve_target_users(
     loader: PostgresLoader, *, limit: int, stage: str
 ) -> List[Mapping[str, object]]:
@@ -285,6 +309,9 @@ def run_contracts_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
         )
         if not clean_records:
             continue
+        clean_records = _dedupe_by_id(clean_records)
+        if not clean_records:
+            continue
 
         loader.upsert_clean("contracts_clean", clean_records)
         total_contracts += len(clean_records)
@@ -324,6 +351,9 @@ def run_comments_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
         clean_records = prepare_records(
             comments, normalize_comment, collected_at=collected_at
         )
+        if not clean_records:
+            continue
+        clean_records = _dedupe_by_id(clean_records)
         if not clean_records:
             continue
 
