@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, insert
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import DeclarativeMeta, declarative_base
 
 logger = logging.getLogger(__name__)
@@ -322,6 +323,29 @@ class PostgresLoader:
     def ensure_schema(self) -> None:
         """Create tables if they do not exist."""
         Base.metadata.create_all(self.engine, checkfirst=True)
+        self._relax_contract_nullability()
+
+    def _relax_contract_nullability(self) -> None:
+        """Ensure nullable columns for contracts align with API behavior."""
+        stmt = text(
+            """
+            ALTER TABLE contracts_clean
+            ALTER COLUMN visibility DROP NOT NULL,
+            ALTER COLUMN token DROP NOT NULL
+            """
+        )
+        with self.engine.begin() as conn:
+            try:
+                conn.execute(stmt)
+            except ProgrammingError as exc:
+                message = str(exc.orig).lower()
+                if "does not exist" in message or "null constraint" in message or "not null" not in message:
+                    logger.debug(
+                        "Skipping nullable contract alteration due to DB state: %s",
+                        exc,
+                    )
+                else:
+                    raise
 
     def execute_sql(self, sql: str) -> None:
         with self.engine.begin() as conn:
