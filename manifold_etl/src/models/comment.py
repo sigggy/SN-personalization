@@ -33,6 +33,26 @@ def _ensure_dict(value: Any, field: str) -> Dict:
     raise ValueError(f"Field '{field}' must be a JSON object")
 
 
+def _build_doc_from_text(text_value: Optional[str]) -> Dict:
+    text_str = (text_value or "").strip()
+    if not text_str:
+        return {"type": "doc", "content": []}
+    return {
+        "type": "doc",
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": text_str,
+                    }
+                ],
+            }
+        ],
+    }
+
+
 class CommentClean(BaseModel):
     """Clean representation of a comment ready for database insertion."""
 
@@ -74,7 +94,17 @@ class CommentClean(BaseModel):
             if field in data:
                 data[field] = _convert_ms(data.get(field))
 
-        data["content"] = _ensure_dict(data.get("content"), "content")
+        # Normalize legacy comments that only provide ``text``.
+        raw_content = data.get("content")
+        raw_text = data.get("text")
+        if raw_content is None:
+            data["content"] = _build_doc_from_text(raw_text)
+        else:
+            data["content"] = _ensure_dict(raw_content, "content")
+
+        if raw_text is not None:
+            data["text"] = str(raw_text)
+
         if data.get("betAmount") is not None:
             data["betAmount"] = float(data["betAmount"])
         if data.get("bountyAwarded") is not None:
