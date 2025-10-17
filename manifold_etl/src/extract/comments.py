@@ -25,12 +25,14 @@ def fetch_comments_for_user(
         raise ValueError("page_limit must be positive")
 
     all_comments: List[Dict] = []
-    before: Optional[str] = None
+    page_index = 0
 
     while True:
-        params = {"userId": user_id, "limit": per_page}
-        if before:
-            params["before"] = before
+        params = {
+            "userId": user_id,
+            "limit": per_page,
+            "page": page_index,
+        }
 
         try:
             page = client.get_json("/comments", params=params)
@@ -56,8 +58,6 @@ def fetch_comments_for_user(
         if len(page) < per_page:
             break
 
-        before = page[-1].get("id")
-        if not before:
-            break
+        page_index += 1
 
     return all_comments
