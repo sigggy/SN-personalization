@@ -36,8 +36,8 @@ class ContractClean(BaseModel):
     creator_id: str = Field(alias="creatorId")
     question: str
     description: Optional[str] = None
-    visibility: str
-    token: str
+    visibility: Optional[str] = None
+    token: Optional[str] = None
     outcome_type: Optional[str] = Field(default=None, alias="outcomeType")
     mechanism: Optional[str] = None
     volume: Optional[float] = None
