@@ -7,7 +7,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Mapping, Optional
 
 from dotenv import load_dotenv
 from sqlalchemy.exc import ProgrammingError
@@ -15,9 +15,17 @@ from sqlalchemy.exc import ProgrammingError
 import config
 
 from .extract import bets as bets_extract
+from .extract import comments as comments_extract
+from .extract import contracts as contracts_extract
 from .extract import users as users_extract
 from .load.postgres import PostgresLoader
-from .transform.normalize import normalize_bet, normalize_user, prepare_records
+from .transform.normalize import (
+    normalize_bet,
+    normalize_comment,
+    normalize_contract,
+    normalize_user,
+    prepare_records,
+)
 from .utils.manifold import ManifoldClient
 
 logger = logging.getLogger(__name__)
@@ -35,6 +43,16 @@ def parse_args() -> argparse.Namespace:
         "--bets-only",
         action="store_true",
         help="Run only the bet ingestion stage",
+    )
+    parser.add_argument(
+        "--contracts-only",
+        action="store_true",
+        help="Run only the contract update stage",
+    )
+    parser.add_argument(
+        "--comments-only",
+        action="store_true",
+        help="Run only the comment update stage",
     )
     parser.add_argument(
         "--log-level", default="INFO", help="Logging level (DEBUG, INFO, WARNING, ...)"
@@ -223,14 +241,128 @@ def run_bets_stage(
     logger.info("Bet ingestion completed (%s total bets)", total_bets)
 
 
+def _resolve_target_users(
+    loader: PostgresLoader, *, limit: int, stage: str
+) -> List[Mapping[str, object]]:
+    if limit <= 0:
+        logger.info("Configured %s user limit is non-positive; skipping stage", stage)
+        return []
+
+    users = loader.fetch_top_users_by_bet_count(limit=limit)
+    if not users:
+        logger.warning("No eligible users found for %s stage.", stage)
+    else:
+        logger.info(
+            "Selected %s users for %s stage (limit=%s)",
+            len(users),
+            stage,
+            limit,
+        )
+    return users
+
+
+def run_contracts_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
+    logger.info("Starting contract update")
+    limit = config.CONTRACT_USER_LIMIT
+    target_users = _resolve_target_users(loader, limit=limit, stage="contract update")
+    if not target_users:
+        return
+
+    total_contracts = 0
+    for user in target_users:
+        user_id = user["user_id"]
+        username = user["username"]
+        bet_count = user.get("bet_count")
+
+        contracts = contracts_extract.fetch_contracts_for_user(client, user_id)
+        if not contracts:
+            logger.info("No contracts to update for user %s", username)
+            continue
+
+        collected_at = datetime.now(timezone.utc)
+        clean_records = prepare_records(
+            contracts, normalize_contract, collected_at=collected_at
+        )
+        if not clean_records:
+            continue
+
+        loader.upsert_clean("contracts_clean", clean_records)
+        total_contracts += len(clean_records)
+        logger.info(
+            "Upserted %s contracts for user %s (bet_count=%s)",
+            len(clean_records),
+            username,
+            bet_count,
+        )
+
+    logger.info(
+        "Contract update completed (%s contracts across %s users)",
+        total_contracts,
+        len(target_users),
+    )
+
+
+def run_comments_stage(client: ManifoldClient, loader: PostgresLoader) -> None:
+    logger.info("Starting comment update")
+    limit = config.COMMENT_USER_LIMIT
+    target_users = _resolve_target_users(loader, limit=limit, stage="comment update")
+    if not target_users:
+        return
+
+    total_comments = 0
+    for user in target_users:
+        user_id = user["user_id"]
+        username = user["username"]
+        bet_count = user.get("bet_count")
+
+        comments = comments_extract.fetch_comments_for_user(client, user_id)
+        if not comments:
+            logger.info("No comments to update for user %s", username)
+            continue
+
+        collected_at = datetime.now(timezone.utc)
+        clean_records = prepare_records(
+            comments, normalize_comment, collected_at=collected_at
+        )
+        if not clean_records:
+            continue
+
+        loader.upsert_clean("comments_clean", clean_records)
+        total_comments += len(clean_records)
+        logger.info(
+            "Upserted %s comments for user %s (bet_count=%s)",
+            len(clean_records),
+            username,
+            bet_count,
+        )
+
+    logger.info(
+        "Comment update completed (%s comments across %s users)",
+        total_comments,
+        len(target_users),
+    )
 
 
 def run_stages(args: argparse.Namespace, loader: PostgresLoader) -> None:
-    if args.users_only and args.bets_only:
-        raise SystemExit("Use either --users-only or --bets-only, not both.")
+    exclusive_flags = {
+        "users": args.users_only,
+        "bets": args.bets_only,
+        "contracts": args.contracts_only,
+        "comments": args.comments_only,
+    }
+    enabled = [name for name, flag in exclusive_flags.items() if flag]
+    if len(enabled) > 1:
+        raise SystemExit(
+            "Use at most one of --users-only, --bets-only, --contracts-only, or --comments-only."
+        )
 
-    run_users = not args.bets_only
-    run_bets = not args.users_only
+    run_users = run_bets = run_contracts = run_comments = True
+    if enabled:
+        selected = enabled[0]
+        run_users = selected == "users"
+        run_bets = selected == "bets"
+        run_contracts = selected == "contracts"
+        run_comments = selected == "comments"
 
     client_kwargs = {
         "max_retries": config.API_MAX_RETRIES,
@@ -252,6 +384,14 @@ def run_stages(args: argparse.Namespace, loader: PostgresLoader) -> None:
                 loader,
                 start_username=args.bet_start_username,
             )
+
+    if run_contracts:
+        with ManifoldClient(**client_kwargs) as client:
+            run_contracts_stage(client, loader)
+
+    if run_comments:
+        with ManifoldClient(**client_kwargs) as client:
+            run_comments_stage(client, loader)
 
 
 def main() -> None:

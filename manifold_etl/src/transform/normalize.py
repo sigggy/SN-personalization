@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Iterable, List
 
-from ..models import Bet, BetClean, UserClean
+from ..models import Bet, BetClean, CommentClean, ContractClean, UserClean
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,22 @@ def normalize_bet(bet_payload: Dict, collected_at: datetime) -> Dict:
 
     clean_model = BetClean.from_bet(bet_model, collected_at=collected_at)
     return clean_model.to_db_dict()
+
+
+def normalize_contract(contract_payload: Dict, collected_at: datetime) -> Dict:
+    """Return clean record for a contract payload."""
+    contract_model = ContractClean.from_payload(
+        contract_payload, collected_at=collected_at
+    )
+    return contract_model.to_db_dict()
+
+
+def normalize_comment(comment_payload: Dict, collected_at: datetime) -> Dict:
+    """Return clean record for a comment payload."""
+    comment_model = CommentClean.from_payload(
+        comment_payload, collected_at=collected_at
+    )
+    return comment_model.to_db_dict()
 
 
 def prepare_records(

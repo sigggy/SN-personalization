@@ -19,7 +19,7 @@ from sqlalchemy import (
     select,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, insert
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeMeta, declarative_base
 
@@ -112,9 +112,90 @@ class BetClean(Base):
     collected_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class ContractClean(Base):
+    __tablename__ = "contracts_clean"
+    __table_args__ = (
+        Index("idx_contracts_clean_creator", "creator_id"),
+        Index("idx_contracts_clean_created_time", text("created_time DESC")),
+        Index("idx_contracts_clean_is_resolved", "is_resolved"),
+        Index(
+            "idx_contracts_clean_group_slugs",
+            "group_slugs",
+            postgresql_using="gin",
+        ),
+    )
+
+    id = Column(String, primary_key=True)
+    slug = Column(String, unique=True)
+    creator_id = Column(String, nullable=False)
+    question = Column(Text, nullable=False)
+    description = Column(Text)
+    visibility = Column(String, nullable=False)
+    token = Column(String, nullable=False)
+    outcome_type = Column(String)
+    mechanism = Column(String)
+    volume = Column(Numeric)
+    unique_bettor_count = Column(Integer)
+    view_count = Column(Numeric)
+    popularity_score = Column(Numeric)
+    is_resolved = Column(Boolean)
+    resolution = Column(String)
+    resolution_probability = Column(Numeric)
+    resolution_time = Column(DateTime(timezone=True))
+    group_slugs = Column(ARRAY(Text))
+    created_time = Column(DateTime(timezone=True), nullable=False)
+    close_time = Column(DateTime(timezone=True))
+    last_bet_time = Column(DateTime(timezone=True))
+    last_comment_time = Column(DateTime(timezone=True))
+    is_love = Column(Boolean)
+    featured_label = Column(String)
+    is_ranked = Column(Boolean)
+    creator_username = Column(String)
+    creator_name = Column(String)
+    collected_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class CommentClean(Base):
+    __tablename__ = "comments_clean"
+    __table_args__ = (
+        Index("idx_comments_clean_user", "user_id"),
+        Index("idx_comments_clean_contract", "contract_id"),
+        Index("idx_comments_clean_created_time", text("created_time DESC")),
+    )
+
+    id = Column(String, primary_key=True)
+    comment_type = Column(String, nullable=False)
+    user_id = Column(String, nullable=False)
+    contract_id = Column(String)
+    reply_to_comment_id = Column(String)
+    created_time = Column(DateTime(timezone=True), nullable=False)
+    content = Column(JSONB, nullable=False)
+    text = Column(Text)
+    likes = Column(Integer)
+    dislikes = Column(Integer)
+    hidden = Column(Boolean)
+    pinned = Column(Boolean)
+    deleted = Column(Boolean)
+    edited_time = Column(DateTime(timezone=True))
+    is_api = Column(Boolean)
+    user_username = Column(String, nullable=False)
+    user_name = Column(String, nullable=False)
+    user_avatar_url = Column(Text)
+    bet_id = Column(String)
+    bettor_id = Column(String)
+    bettor_username = Column(String)
+    bet_amount = Column(Numeric)
+    bet_outcome = Column(String)
+    visibility = Column(String)
+    bounty_awarded = Column(Numeric)
+    collected_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 CLEAN_MODELS: Dict[str, Type[Base]] = {
     "users_clean": UserClean,
     "bets_clean": BetClean,
+    "contracts_clean": ContractClean,
+    "comments_clean": CommentClean,
 }
 
 CLEAN_TABLES = {name: model.__table__ for name, model in CLEAN_MODELS.items()}
@@ -154,6 +235,35 @@ class PostgresLoader:
         with self.engine.connect() as conn:
             rows = conn.execute(stmt).scalars().all()
         return list(rows)
+
+    def fetch_top_users_by_bet_count(
+        self, *, limit: int
+    ) -> List[Mapping[str, object]]:
+        """Return top users ordered by bet count for downstream stages."""
+        if limit <= 0:
+            return []
+
+        users = CLEAN_TABLES["users_clean"]
+        bets = CLEAN_TABLES["bets_clean"]
+
+        bet_count = func.count(bets.c.id)
+        stmt = (
+            select(
+                users.c.id.label("user_id"),
+                users.c.username,
+                func.date_part("year", users.c.created_time).label("join_year"),
+                bet_count.label("bet_count"),
+            )
+            .join(bets, bets.c.user_id == users.c.id)
+            .group_by(users.c.id, users.c.username, users.c.created_time)
+            .order_by(bet_count.desc(), users.c.id)
+            .limit(limit)
+        )
+
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).mappings().all()
+
+        return rows
 
     def get_column_count(self, table_name: str) -> int:
         """Return number of columns for the given cleaned table."""

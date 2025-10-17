@@ -17,6 +17,12 @@ API_URL = "https://api.manifold.markets/v0/bets"
 THRESHOLD = 50
 LIMIT = 1000
 
+# Contract/comment update configuration
+CONTRACT_USER_LIMIT = 25
+COMMENT_USER_LIMIT = 25
+CONTRACT_PAGE_LIMIT = 1000
+COMMENT_PAGE_LIMIT = 1000
+
 # HTTP client
 API_TIMEOUT = 30  # seconds
 API_MAX_RETRIES = 7
