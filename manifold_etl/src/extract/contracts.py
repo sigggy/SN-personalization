@@ -25,10 +25,10 @@ def fetch_contracts_for_user(
         raise ValueError("page_limit must be positive")
 
     all_contracts: List[Dict] = []
-    before: Optional[str] = None
+    before: Optional[int] = None
 
     while True:
-        params = {"creatorId": user_id, "limit": per_page}
+        params = {"limit": per_page}
         if before:
             params["before"] = before
         try:
@@ -50,15 +50,19 @@ def fetch_contracts_for_user(
         if not page:
             break
 
-        for contract in page:
-            if contract.get("creatorId") == user_id:
-                all_contracts.append(contract)
+        filtered = [contract for contract in page if contract.get("creatorId") == user_id]
+        if filtered:
+            all_contracts.extend(filtered)
 
         if len(page) < per_page:
             break
 
-        before = page[-1].get("id")
-        if not before:
+        last_created = page[-1].get("createdTime")
+        if not last_created:
             break
+        if before == last_created:
+            logger.debug("Reached repeat cursor while paging markets; stopping at %s", before)
+            break
+        before = last_created
 
     return all_contracts
